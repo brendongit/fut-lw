@@ -20,6 +20,13 @@ export function daysUntil(date: string): number {
   return Math.round((target.getTime() - today.getTime()) / 86_400_000);
 }
 
+export function formatCurrency(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(value);
+}
+
 export function getInitials(name: string) {
   return name
     .split(" ")

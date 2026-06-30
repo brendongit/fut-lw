@@ -26,6 +26,7 @@ export async function createTournament(input: {
   name: string;
   date: string;
   players_per_team: number;
+  price?: number | null;
 }): Promise<Tournament> {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -49,7 +50,8 @@ export async function getTournamentPlayers(tournamentId: string): Promise<Tourna
   const { data, error } = await supabase
     .from("tournament_players")
     .select("*, player:players(*)")
-    .eq("tournament_id", tournamentId);
+    .eq("tournament_id", tournamentId)
+    .order("created_at");
   if (error) throw error;
   return data;
 }
@@ -118,17 +120,39 @@ export async function addAllPlayersToTournament(tournamentId: string): Promise<v
   if (error) throw error;
 }
 
-export async function setSubstitute(
+export async function setPaid(
   tournamentId: string,
   playerId: string,
-  isSubstitute: boolean
+  paid: boolean,
+  amount?: number | null
 ): Promise<void> {
   const supabase = createClient();
   const { error } = await supabase
     .from("tournament_players")
-    .update({ is_substitute: isSubstitute })
+    .update({
+      paid,
+      paid_at: paid ? new Date().toISOString() : null,
+      amount_paid: paid ? amount ?? null : null,
+    })
     .eq("tournament_id", tournamentId)
     .eq("player_id", playerId);
+  if (error) throw error;
+}
+
+export async function setAllPaid(
+  tournamentId: string,
+  paid: boolean,
+  amount?: number | null
+): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("tournament_players")
+    .update({
+      paid,
+      paid_at: paid ? new Date().toISOString() : null,
+      amount_paid: paid ? amount ?? null : null,
+    })
+    .eq("tournament_id", tournamentId);
   if (error) throw error;
 }
 
@@ -177,18 +201,6 @@ export async function resetTeams(tournamentId: string): Promise<void> {
     .from("tournament_players")
     .update({ is_substitute: true })
     .eq("tournament_id", tournamentId);
-}
-
-export async function setAllSubstitutes(
-  tournamentId: string,
-  isSub: boolean
-): Promise<void> {
-  const supabase = createClient();
-  const { error } = await supabase
-    .from("tournament_players")
-    .update({ is_substitute: isSub })
-    .eq("tournament_id", tournamentId);
-  if (error) throw error;
 }
 
 export async function drawTeams(

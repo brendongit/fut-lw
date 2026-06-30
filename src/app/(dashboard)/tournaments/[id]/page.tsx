@@ -11,8 +11,8 @@ import {
   removePlayerFromTournament,
   removeAllPlayersFromTournament,
   addAllPlayersToTournament,
-  setSubstitute,
-  setAllSubstitutes,
+  setPaid,
+  setAllPaid,
   drawTeams,
   resetTeams,
   declareWinner,
@@ -30,9 +30,92 @@ import { AddPlayerModal } from "@/features/tournaments/AddPlayerModal";
 import { AddSubModal } from "@/features/tournaments/AddSubModal";
 import { TeamCard } from "@/features/tournaments/TeamCard";
 import { toast } from "sonner";
-import { formatDate } from "@/lib/utils";
-import { Users, Calendar, Shuffle, Plus, X, Shield, RotateCcw } from "lucide-react";
-import type { Team } from "@/types";
+import { formatDate, formatCurrency } from "@/lib/utils";
+import { Users, Calendar, Shuffle, Plus, X, Shield, RotateCcw, Check } from "lucide-react";
+import type { Team, TournamentPlayer } from "@/types";
+
+function PlayerRow({
+  tp,
+  price,
+  onSetPaid,
+  onRemove,
+}: {
+  tp: TournamentPlayer;
+  price: number | null;
+  onSetPaid: (playerId: string, paid: boolean, amount: number | null) => void;
+  onRemove: (playerId: string) => void;
+}) {
+  const [editingPaid, setEditingPaid] = useState(false);
+  const [amountInput, setAmountInput] = useState(
+    price != null ? String(price) : ""
+  );
+
+  function confirmPaid() {
+    const amount = amountInput.trim() === "" ? null : Number(amountInput);
+    onSetPaid(tp.player_id, true, amount);
+    setEditingPaid(false);
+  }
+
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-2.5">
+      <Avatar src={tp.player?.photo_url} name={tp.player?.name ?? ""} size="sm" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-[var(--foreground)] truncate">
+          {tp.player?.name}
+        </p>
+      </div>
+
+      {editingPaid ? (
+        <div className="flex items-center gap-1 shrink-0">
+          <span className="text-[10px] text-[var(--foreground-muted)]">R$</span>
+          <input
+            autoFocus
+            type="number"
+            step="0.01"
+            min="0"
+            value={amountInput}
+            onChange={(e) => setAmountInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && confirmPaid()}
+            className="w-16 text-xs rounded-lg border border-[var(--border)] bg-[var(--background-tertiary)] text-[var(--foreground)] px-1.5 py-1 outline-none focus:border-emerald-500/60 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          />
+          <button onClick={confirmPaid} className="text-emerald-400 hover:text-emerald-300">
+            <Check className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => setEditingPaid(false)}
+            className="text-[var(--foreground-muted)] hover:text-[var(--foreground)]"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() =>
+            tp.paid ? onSetPaid(tp.player_id, false, null) : setEditingPaid(true)
+          }
+          className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold border transition-all ${
+            tp.paid
+              ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400"
+              : "bg-[var(--background-tertiary)] border-[var(--border)] text-[var(--foreground-muted)] hover:border-emerald-500/30 hover:text-emerald-400/70"
+          }`}
+        >
+          {tp.paid
+            ? tp.amount_paid != null
+              ? `Pago · ${formatCurrency(tp.amount_paid)}`
+              : "Pago"
+            : "Pendente"}
+        </button>
+      )}
+
+      <button
+        onClick={() => onRemove(tp.player_id)}
+        className="text-[var(--foreground-muted)] hover:text-red-400 transition-colors"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
 
 export default function TournamentDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -78,17 +161,29 @@ export default function TournamentDetailPage() {
     },
   });
 
-  const substituteMutation = useMutation({
-    mutationFn: ({ playerId, isSub }: { playerId: string; isSub: boolean }) =>
-      setSubstitute(id, playerId, isSub),
+  const paidMutation = useMutation({
+    mutationFn: ({
+      playerId,
+      paid,
+      amount,
+    }: {
+      playerId: string;
+      paid: boolean;
+      amount?: number | null;
+    }) => setPaid(id, playerId, paid, amount),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["tournament-players", id] }),
+    onError: (e: Error) => toast.error(`Erro ao salvar pagamento: ${e.message}`),
   });
 
-  const allSubsMutation = useMutation({
-    mutationFn: (isSub: boolean) => setAllSubstitutes(id, isSub),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["tournament-players", id] }),
+  const allPaidMutation = useMutation({
+    mutationFn: (paid: boolean) =>
+      setAllPaid(id, paid, paid ? tournament?.price ?? null : null),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tournament-players", id] });
+      toast.success("Pagamentos atualizados");
+    },
+    onError: (e: Error) => toast.error(`Erro ao salvar pagamentos: ${e.message}`),
   });
 
   const addAllMutation = useMutation({
@@ -176,9 +271,13 @@ export default function TournamentDetailPage() {
     onError: () => toast.error("Erro ao registrar vencedor"),
   });
 
-  const activePlayers = tournamentPlayers.filter((tp) => !tp.is_substitute);
-  const substitutes = tournamentPlayers.filter((tp) => tp.is_substitute);
   const addedPlayerIds = new Set(tournamentPlayers.map((tp) => tp.player_id));
+  const paidPlayers = tournamentPlayers.filter((tp) => tp.paid);
+  const allPaid = tournamentPlayers.length > 0 && paidPlayers.length === tournamentPlayers.length;
+  const totalCollected = paidPlayers.reduce(
+    (sum, tp) => sum + (tp.amount_paid ?? 0),
+    0
+  );
 
   if (loadingTournament) {
     return (
@@ -194,37 +293,6 @@ export default function TournamentDetailPage() {
   }
 
   if (!tournament) return null;
-
-  function PlayerRow({ tp }: { tp: typeof tournamentPlayers[number] }) {
-    return (
-      <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-2.5">
-        <Avatar src={tp.player?.photo_url} name={tp.player?.name ?? ""} size="sm" />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-[var(--foreground)] truncate">
-            {tp.player?.name}
-          </p>
-        </div>
-        <button
-          onClick={() =>
-            substituteMutation.mutate({ playerId: tp.player_id, isSub: !tp.is_substitute })
-          }
-          className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold border transition-all ${
-            tp.is_substitute
-              ? "bg-amber-500/15 border-amber-500/30 text-amber-400"
-              : "bg-[var(--background-tertiary)] border-[var(--border)] text-[var(--foreground-muted)] hover:border-amber-500/30 hover:text-amber-400/70"
-          }`}
-        >
-          Sub
-        </button>
-        <button
-          onClick={() => removeMutation.mutate({ playerId: tp.player_id })}
-          className="text-[var(--foreground-muted)] hover:text-red-400 transition-colors"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-    );
-  }
 
   return (
     <div>
@@ -278,12 +346,17 @@ export default function TournamentDetailPage() {
           <p className="text-2xl font-bold text-[var(--foreground)] mt-1">{tournamentPlayers.length}</p>
         </Card>
         <Card className="p-3 sm:p-4">
-          <p className="text-xs text-[var(--foreground-muted)] font-medium">Substitutos</p>
-          <p className="text-2xl font-bold text-[var(--foreground)] mt-1">{substitutes.length}</p>
-        </Card>
-        <Card className="p-3 sm:p-4">
           <p className="text-xs text-[var(--foreground-muted)] font-medium">Times</p>
           <p className="text-2xl font-bold text-[var(--foreground)] mt-1">{teams.length}</p>
+        </Card>
+        <Card className="p-3 sm:p-4">
+          <p className="text-xs text-[var(--foreground-muted)] font-medium">Arrecadado</p>
+          <p className="text-2xl font-bold text-[var(--foreground)] mt-1">
+            {formatCurrency(totalCollected)}
+          </p>
+          <p className="text-xs text-[var(--foreground-muted)] mt-0.5">
+            {paidPlayers.length}/{tournamentPlayers.length} pagos
+          </p>
         </Card>
       </div>
 
@@ -299,11 +372,11 @@ export default function TournamentDetailPage() {
               {tournamentPlayers.length > 0 && (
                 <>
                   <button
-                    onClick={() => allSubsMutation.mutate(substitutes.length < tournamentPlayers.length)}
-                    disabled={allSubsMutation.isPending}
-                    className="rounded-full px-2.5 py-1 text-[10px] font-semibold border transition-all disabled:opacity-40 bg-[var(--background-tertiary)] border-[var(--border)] text-[var(--foreground-muted)] hover:border-amber-500/40 hover:text-amber-400"
+                    onClick={() => allPaidMutation.mutate(!allPaid)}
+                    disabled={allPaidMutation.isPending}
+                    className="rounded-full px-2.5 py-1 text-[10px] font-semibold border transition-all disabled:opacity-40 bg-[var(--background-tertiary)] border-[var(--border)] text-[var(--foreground-muted)] hover:border-emerald-500/40 hover:text-emerald-400"
                   >
-                    {substitutes.length === tournamentPlayers.length ? "Limpar subs" : "Todos sub"}
+                    {allPaid ? "Limpar pagos" : "Marcar todos pagos"}
                   </button>
                   <button
                     onClick={() => clearAllMutation.mutate()}
@@ -342,22 +415,17 @@ export default function TournamentDetailPage() {
             </div>
           ) : (
             <div className="flex flex-col gap-1.5">
-              {activePlayers.map((tp) => (
-                <PlayerRow key={tp.player_id} tp={tp} />
+              {tournamentPlayers.map((tp) => (
+                <PlayerRow
+                  key={tp.player_id}
+                  tp={tp}
+                  price={tournament.price}
+                  onSetPaid={(playerId, paid, amount) =>
+                    paidMutation.mutate({ playerId, paid, amount })
+                  }
+                  onRemove={(playerId) => removeMutation.mutate({ playerId })}
+                />
               ))}
-              {substitutes.length > 0 && (
-                <>
-                  <div className="flex items-center gap-2 mt-2 mb-1">
-                    <span className="text-[10px] font-semibold text-amber-400/70 uppercase tracking-wider">
-                      Substitutos ({substitutes.length})
-                    </span>
-                    <div className="flex-1 h-px bg-amber-500/15" />
-                  </div>
-                  {substitutes.map((tp) => (
-                    <PlayerRow key={tp.player_id} tp={tp} />
-                  ))}
-                </>
-              )}
             </div>
           )}
         </div>

@@ -14,6 +14,7 @@ export interface Tournament {
   name: string;
   date: string;
   players_per_team: number;
+  price: number | null;
   created_at: string;
 }
 
@@ -22,6 +23,9 @@ export interface TournamentPlayer {
   tournament_id: string;
   player_id: string;
   is_substitute: boolean;
+  paid: boolean;
+  paid_at: string | null;
+  amount_paid: number | null;
   created_at: string;
   player?: Player;
 }

@@ -27,6 +27,7 @@ const schema = z.object({
   name: z.string().min(1, "Nome obrigatório"),
   date: z.string().min(1, "Data obrigatória"),
   players_per_team: z.number().min(2).max(11),
+  price: z.number().min(0).optional(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -112,6 +113,19 @@ export function TournamentDialog({ open, onClose }: TournamentDialogProps) {
               )}
             />
           </div>
+
+          <Input
+            label="Valor por jogador (opcional)"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="Ex: 20.00"
+            className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            error={errors.price?.message}
+            {...register("price", {
+              setValueAs: (v) => (v === "" ? undefined : Number(v)),
+            })}
+          />
 
           <div className="flex gap-3 pt-2">
             <Button type="button" variant="secondary" className="flex-1" onClick={() => { reset(); onClose(); }}>
