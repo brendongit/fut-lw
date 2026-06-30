@@ -37,6 +37,7 @@ export function AddPlayerModal({
       addPlayerToTournament(tournamentId, playerId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tournament-players", tournamentId] });
+      queryClient.invalidateQueries({ queryKey: ["waiting-players", tournamentId] });
       toast.success("Jogador adicionado");
     },
     onError: () => toast.error("Erro ao adicionar jogador"),

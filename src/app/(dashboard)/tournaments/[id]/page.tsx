@@ -7,31 +7,31 @@ import {
   getTournament,
   getTournamentPlayers,
   getTeams,
+  getWaitingPlayers,
   removePlayerFromTournament,
+  removeAllPlayersFromTournament,
+  addAllPlayersToTournament,
   setSubstitute,
+  setAllSubstitutes,
   drawTeams,
+  resetTeams,
   declareWinner,
+  formTeamFromWaiting,
+  movePlayerBetweenTeams,
+  removePlayerFromTeam,
 } from "@/services/tournaments";
 import { getPlayers } from "@/services/players";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { AddPlayerModal } from "@/features/tournaments/AddPlayerModal";
+import { AddSubModal } from "@/features/tournaments/AddSubModal";
 import { TeamCard } from "@/features/tournaments/TeamCard";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/utils";
-import {
-  Users,
-  Calendar,
-  Trophy,
-  Shuffle,
-  Plus,
-  X,
-  Shield,
-} from "lucide-react";
+import { Users, Calendar, Shuffle, Plus, X, Shield, RotateCcw } from "lucide-react";
 import type { Team } from "@/types";
 
 export default function TournamentDetailPage() {
@@ -39,7 +39,9 @@ export default function TournamentDetailPage() {
   const queryClient = useQueryClient();
 
   const [showAddPlayer, setShowAddPlayer] = useState(false);
+  const [addSubFor, setAddSubFor] = useState<Team | null>(null);
   const [winnerConfirm, setWinnerConfirm] = useState<Team | null>(null);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const { data: tournament, isLoading: loadingTournament } = useQuery({
     queryKey: ["tournament", id],
@@ -61,6 +63,12 @@ export default function TournamentDetailPage() {
     queryFn: () => getTeams(id),
   });
 
+  const { data: waitingPlayers = [] } = useQuery({
+    queryKey: ["waiting-players", id],
+    queryFn: () => getWaitingPlayers(id),
+    enabled: teams.length > 0,
+  });
+
   const removeMutation = useMutation({
     mutationFn: ({ playerId }: { playerId: string }) =>
       removePlayerFromTournament(id, playerId),
@@ -71,24 +79,89 @@ export default function TournamentDetailPage() {
   });
 
   const substituteMutation = useMutation({
-    mutationFn: ({
-      playerId,
-      isSub,
-    }: {
-      playerId: string;
-      isSub: boolean;
-    }) => setSubstitute(id, playerId, isSub),
+    mutationFn: ({ playerId, isSub }: { playerId: string; isSub: boolean }) =>
+      setSubstitute(id, playerId, isSub),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["tournament-players", id] }),
+  });
+
+  const allSubsMutation = useMutation({
+    mutationFn: (isSub: boolean) => setAllSubstitutes(id, isSub),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["tournament-players", id] }),
+  });
+
+  const addAllMutation = useMutation({
+    mutationFn: () => addAllPlayersToTournament(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tournament-players", id] });
+      toast.success("Todos os jogadores adicionados");
+    },
+    onError: () => toast.error("Erro ao adicionar jogadores"),
+  });
+
+  const clearAllMutation = useMutation({
+    mutationFn: () => removeAllPlayersFromTournament(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tournament-players", id] });
+      queryClient.invalidateQueries({ queryKey: ["teams", id] });
+      toast.success("Jogadores removidos");
+    },
+    onError: () => toast.error("Erro ao limpar jogadores"),
   });
 
   const drawMutation = useMutation({
     mutationFn: () => drawTeams(id, tournament!.players_per_team),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["teams", id] });
+      queryClient.invalidateQueries({ queryKey: ["waiting-players", id] });
       toast.success("Times sorteados!");
     },
     onError: (e: Error) => toast.error(e.message),
+  });
+
+  const resetMutation = useMutation({
+    mutationFn: () => resetTeams(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["teams", id] });
+      queryClient.invalidateQueries({ queryKey: ["waiting-players", id] });
+      queryClient.invalidateQueries({ queryKey: ["tournament-players", id] });
+      toast.success("Times zerados");
+      setShowResetConfirm(false);
+    },
+    onError: () => toast.error("Erro ao zerar times"),
+  });
+
+  const formTeamMutation = useMutation({
+    mutationFn: () => formTeamFromWaiting(id, tournament!.players_per_team),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["teams", id] });
+      queryClient.invalidateQueries({ queryKey: ["waiting-players", id] });
+      toast.success("Time formado!");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const movePlayerMutation = useMutation({
+    mutationFn: ({ playerId, fromTeamId, toTeamId }: { playerId: string; fromTeamId: string; toTeamId: string }) =>
+      movePlayerBetweenTeams(fromTeamId, toTeamId, playerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["teams", id] });
+      queryClient.invalidateQueries({ queryKey: ["waiting-players", id] });
+      toast.success("Jogador movido");
+    },
+    onError: () => toast.error("Erro ao mover jogador"),
+  });
+
+  const removeFromTeamMutation = useMutation({
+    mutationFn: ({ playerId, teamId }: { playerId: string; teamId: string }) =>
+      removePlayerFromTeam(teamId, playerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["teams", id] });
+      queryClient.invalidateQueries({ queryKey: ["waiting-players", id] });
+      toast.success("Jogador removido do time");
+    },
+    onError: () => toast.error("Erro ao remover do time"),
   });
 
   const winnerMutation = useMutation({
@@ -122,13 +195,44 @@ export default function TournamentDetailPage() {
 
   if (!tournament) return null;
 
+  function PlayerRow({ tp }: { tp: typeof tournamentPlayers[number] }) {
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-2.5">
+        <Avatar src={tp.player?.photo_url} name={tp.player?.name ?? ""} size="sm" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-[var(--foreground)] truncate">
+            {tp.player?.name}
+          </p>
+        </div>
+        <button
+          onClick={() =>
+            substituteMutation.mutate({ playerId: tp.player_id, isSub: !tp.is_substitute })
+          }
+          className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold border transition-all ${
+            tp.is_substitute
+              ? "bg-amber-500/15 border-amber-500/30 text-amber-400"
+              : "bg-[var(--background-tertiary)] border-[var(--border)] text-[var(--foreground-muted)] hover:border-amber-500/30 hover:text-amber-400/70"
+          }`}
+        >
+          Sub
+        </button>
+        <button
+          onClick={() => removeMutation.mutate({ playerId: tp.player_id })}
+          className="text-[var(--foreground-muted)] hover:text-red-400 transition-colors"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div>
       {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-start justify-between">
+      <div className="mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold text-[var(--foreground)]">
+            <h1 className="text-xl sm:text-2xl font-semibold text-[var(--foreground)]">
               {tournament.name}
             </h1>
             <div className="flex items-center gap-4 mt-2">
@@ -142,122 +246,130 @@ export default function TournamentDetailPage() {
               </span>
             </div>
           </div>
-          <Button
-            onClick={() => drawMutation.mutate()}
-            loading={drawMutation.isPending}
-            size="lg"
-            className="gap-2 shadow-lg shadow-indigo-500/20"
-          >
-            <Shuffle className="h-5 w-5" />
-            Sortear Times
-          </Button>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            {teams.length > 0 && (
+              <Button
+                variant="secondary"
+                size="lg"
+                onClick={() => setShowResetConfirm(true)}
+                className="gap-2 text-red-400 hover:text-red-300 hover:border-red-500/30"
+              >
+                <RotateCcw className="h-4 w-4" />
+                <span className="hidden sm:inline">Zerar times</span>
+              </Button>
+            )}
+            <Button
+              onClick={() => drawMutation.mutate()}
+              loading={drawMutation.isPending}
+              size="lg"
+              className="gap-2 shadow-lg shadow-indigo-500/20 flex-1 sm:flex-none"
+            >
+              <Shuffle className="h-5 w-5" />
+              Sortear Times
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* Info cards */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
-        <Card className="p-4">
+      <div className="grid grid-cols-3 gap-3 mb-6">
+        <Card className="p-3 sm:p-4">
           <p className="text-xs text-[var(--foreground-muted)] font-medium">Inscritos</p>
-          <p className="text-2xl font-bold text-[var(--foreground)] mt-1">
-            {activePlayers.length}
-          </p>
+          <p className="text-2xl font-bold text-[var(--foreground)] mt-1">{tournamentPlayers.length}</p>
         </Card>
-        <Card className="p-4">
+        <Card className="p-3 sm:p-4">
           <p className="text-xs text-[var(--foreground-muted)] font-medium">Substitutos</p>
-          <p className="text-2xl font-bold text-[var(--foreground)] mt-1">
-            {substitutes.length}
-          </p>
+          <p className="text-2xl font-bold text-[var(--foreground)] mt-1">{substitutes.length}</p>
         </Card>
-        <Card className="p-4">
+        <Card className="p-3 sm:p-4">
           <p className="text-xs text-[var(--foreground-muted)] font-medium">Times</p>
-          <p className="text-2xl font-bold text-[var(--foreground)] mt-1">
-            {teams.length}
-          </p>
+          <p className="text-2xl font-bold text-[var(--foreground)] mt-1">{teams.length}</p>
         </Card>
       </div>
 
-      <div className="grid grid-cols-5 gap-6">
+      {/* Players + Teams */}
+      <div className="flex flex-col lg:grid lg:grid-cols-5 gap-6">
         {/* Players list */}
-        <div className="col-span-2">
-          <div className="flex items-center justify-between mb-3">
+        <div className="lg:col-span-2">
+          <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
             <h2 className="text-sm font-semibold text-[var(--foreground)]">
               Jogadores ({tournamentPlayers.length})
             </h2>
-            <Button size="sm" variant="secondary" onClick={() => setShowAddPlayer(true)}>
-              <Plus className="h-3.5 w-3.5" />
-              Adicionar
-            </Button>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            {loadingPlayers
-              ? Array.from({ length: 5 }).map((_, i) => (
-                  <Skeleton key={i} className="h-14 rounded-xl" />
-                ))
-              : tournamentPlayers.length === 0
-              ? (
-                <div className="rounded-2xl border border-[var(--border)] border-dashed p-8 text-center">
-                  <p className="text-sm text-[var(--foreground-muted)]">
-                    Adicione jogadores ao torneio
-                  </p>
-                </div>
-              )
-              : tournamentPlayers.map((tp) => (
-                  <div
-                    key={tp.player_id}
-                    className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--background-secondary)] px-3 py-2.5 hover:border-[var(--border-subtle)] transition-all"
+            <div className="flex items-center gap-1.5 flex-wrap justify-end">
+              {tournamentPlayers.length > 0 && (
+                <>
+                  <button
+                    onClick={() => allSubsMutation.mutate(substitutes.length < tournamentPlayers.length)}
+                    disabled={allSubsMutation.isPending}
+                    className="rounded-full px-2.5 py-1 text-[10px] font-semibold border transition-all disabled:opacity-40 bg-[var(--background-tertiary)] border-[var(--border)] text-[var(--foreground-muted)] hover:border-amber-500/40 hover:text-amber-400"
                   >
-                    <Avatar
-                      src={tp.player?.photo_url}
-                      name={tp.player?.name ?? ""}
-                      size="sm"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-[var(--foreground)] truncate">
-                        {tp.player?.name}
-                      </p>
-                      {tp.is_substitute && (
-                        <Badge variant="warning" className="text-[10px] py-0">
-                          Substituto
-                        </Badge>
-                      )}
-                    </div>
-
-                    {/* Substitute toggle */}
-                    <label className="flex items-center gap-1.5 cursor-pointer text-xs text-[var(--foreground-muted)] hover:text-[var(--foreground)] transition-colors shrink-0">
-                      <input
-                        type="checkbox"
-                        checked={tp.is_substitute}
-                        onChange={(e) =>
-                          substituteMutation.mutate({
-                            playerId: tp.player_id,
-                            isSub: e.target.checked,
-                          })
-                        }
-                        className="accent-indigo-500 h-3.5 w-3.5"
-                      />
-                      Sub
-                    </label>
-
-                    <button
-                      onClick={() => removeMutation.mutate({ playerId: tp.player_id })}
-                      className="text-[var(--foreground-muted)] hover:text-red-400 transition-colors"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ))}
+                    {substitutes.length === tournamentPlayers.length ? "Limpar subs" : "Todos sub"}
+                  </button>
+                  <button
+                    onClick={() => clearAllMutation.mutate()}
+                    disabled={clearAllMutation.isPending}
+                    className="rounded-full px-2.5 py-1 text-[10px] font-semibold border transition-all disabled:opacity-40 bg-[var(--background-tertiary)] border-[var(--border)] text-[var(--foreground-muted)] hover:border-red-500/40 hover:text-red-400"
+                  >
+                    Limpar todos
+                  </button>
+                </>
+              )}
+              <button
+                onClick={() => addAllMutation.mutate()}
+                disabled={addAllMutation.isPending}
+                className="rounded-full px-2.5 py-1 text-[10px] font-semibold border transition-all disabled:opacity-40 bg-[var(--background-tertiary)] border-[var(--border)] text-[var(--foreground-muted)] hover:border-indigo-500/40 hover:text-indigo-400"
+              >
+                Adicionar todos
+              </button>
+              <Button size="sm" variant="secondary" onClick={() => setShowAddPlayer(true)}>
+                <Plus className="h-3.5 w-3.5" />
+                Adicionar
+              </Button>
+            </div>
           </div>
+
+          {loadingPlayers ? (
+            <div className="flex flex-col gap-1.5">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-14 rounded-xl" />
+              ))}
+            </div>
+          ) : tournamentPlayers.length === 0 ? (
+            <div className="rounded-2xl border border-[var(--border)] border-dashed p-8 text-center">
+              <p className="text-sm text-[var(--foreground-muted)]">
+                Adicione jogadores ao torneio
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {activePlayers.map((tp) => (
+                <PlayerRow key={tp.player_id} tp={tp} />
+              ))}
+              {substitutes.length > 0 && (
+                <>
+                  <div className="flex items-center gap-2 mt-2 mb-1">
+                    <span className="text-[10px] font-semibold text-amber-400/70 uppercase tracking-wider">
+                      Substitutos ({substitutes.length})
+                    </span>
+                    <div className="flex-1 h-px bg-amber-500/15" />
+                  </div>
+                  {substitutes.map((tp) => (
+                    <PlayerRow key={tp.player_id} tp={tp} />
+                  ))}
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Teams */}
-        <div className="col-span-3">
+        <div className="lg:col-span-3">
           <h2 className="text-sm font-semibold text-[var(--foreground)] mb-3">
             Times {teams.length > 0 && `(${teams.length})`}
           </h2>
 
           {loadingTeams ? (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {Array.from({ length: 4 }).map((_, i) => (
                 <Skeleton key={i} className="h-48 rounded-2xl" />
               ))}
@@ -267,21 +379,59 @@ export default function TournamentDetailPage() {
               <Shield className="h-10 w-10 text-[var(--foreground-subtle)]" />
               <p className="text-sm text-[var(--foreground-muted)]">
                 Adicione jogadores e clique em{" "}
-                <span className="font-medium text-[var(--foreground)]">
-                  Sortear Times
-                </span>
+                <span className="font-medium text-[var(--foreground)]">Sortear Times</span>
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-4">
-              {teams.map((team) => (
-                <TeamCard
-                  key={team.id}
-                  team={team}
-                  onDeclareWinner={() => setWinnerConfirm(team)}
-                />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {teams.map((team) => (
+                  <TeamCard
+                    key={team.id}
+                    team={team}
+                    allTeams={teams}
+                    onDeclareWinner={() => setWinnerConfirm(team)}
+                    onMovePlayer={(playerId, toTeamId) =>
+                      movePlayerMutation.mutate({ playerId, fromTeamId: team.id, toTeamId })
+                    }
+                    onRemoveFromTeam={(playerId) =>
+                      removeFromTeamMutation.mutate({ playerId, teamId: team.id })
+                    }
+                    onAddSubClick={() => setAddSubFor(team)}
+                  />
+                ))}
+              </div>
+
+              {waitingPlayers.length > 0 && (
+                <div className="mt-4 rounded-2xl border border-amber-500/25 bg-[var(--background-secondary)] p-4">
+                  <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+                    <p className="text-xs font-semibold text-amber-400 uppercase tracking-wider">
+                      Aguardando ({waitingPlayers.length}/{tournament.players_per_team})
+                    </p>
+                    <Button
+                      size="sm"
+                      onClick={() => formTeamMutation.mutate()}
+                      loading={formTeamMutation.isPending}
+                      className="gap-1.5 shadow-sm shadow-emerald-500/20 bg-emerald-600 hover:bg-emerald-500 text-white border-0"
+                    >
+                      <Shield className="h-3.5 w-3.5" />
+                      Formar time
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {waitingPlayers.map((tp) => (
+                      <div
+                        key={tp.player_id}
+                        className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-2.5 py-1.5"
+                      >
+                        <Avatar src={tp.player?.photo_url} name={tp.player?.name ?? ""} size="sm" />
+                        <span className="text-xs font-medium text-[var(--foreground)]">{tp.player?.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -294,6 +444,14 @@ export default function TournamentDetailPage() {
         tournamentId={id}
       />
 
+      <AddSubModal
+        open={!!addSubFor}
+        onClose={() => setAddSubFor(null)}
+        targetTeam={addSubFor}
+        allTeams={teams}
+        tournamentId={id}
+      />
+
       <ConfirmDialog
         open={!!winnerConfirm}
         title={`${winnerConfirm?.name} é o vencedor?`}
@@ -301,6 +459,16 @@ export default function TournamentDetailPage() {
         onConfirm={() => winnerConfirm && winnerMutation.mutate(winnerConfirm.id)}
         onCancel={() => setWinnerConfirm(null)}
         loading={winnerMutation.isPending}
+      />
+
+      <ConfirmDialog
+        open={showResetConfirm}
+        title="Zerar times?"
+        description="Todos os times formados serão removidos. Os jogadores voltam para a lista e você pode sortear novamente."
+        onConfirm={() => resetMutation.mutate()}
+        onCancel={() => setShowResetConfirm(false)}
+        loading={resetMutation.isPending}
+        variant="danger"
       />
     </div>
   );

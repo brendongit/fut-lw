@@ -26,14 +26,19 @@ export interface TournamentPlayer {
   player?: Player;
 }
 
+export interface TeamMember extends Player {
+  is_sub: boolean;
+}
+
 export interface Team {
   id: string;
   tournament_id: string;
   name: string;
   logo: string;
   color: string;
+  is_reserve: boolean;
   created_at: string;
-  players?: Player[];
+  players?: TeamMember[];
 }
 
 export interface TeamPlayer {

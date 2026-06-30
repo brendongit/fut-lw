@@ -13,6 +13,13 @@ export function formatDate(date: string | Date) {
   }).format(new Date(date));
 }
 
+export function daysUntil(date: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(date + "T00:00:00");
+  return Math.round((target.getTime() - today.getTime()) / 86_400_000);
+}
+
 export function getInitials(name: string) {
   return name
     .split(" ")

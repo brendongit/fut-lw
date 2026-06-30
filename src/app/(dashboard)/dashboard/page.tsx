@@ -46,7 +46,7 @@ export default function DashboardPage() {
       />
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         {statCards.map((card) => (
           <Card key={card.label} className="flex items-center gap-4">
             {isLoading ? (
@@ -73,7 +73,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Top 5 */}
-      <Card className="max-w-lg">
+      <Card className="w-full max-w-lg">
         <div className="flex items-center gap-2 mb-5">
           <TrendingUp className="h-4 w-4 text-indigo-400" />
           <h2 className="text-sm font-semibold text-[var(--foreground)]">Top 5 Vencedores</h2>
