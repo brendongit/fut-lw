@@ -1,5 +1,14 @@
 import { createClient } from "@/lib/supabase/client";
-import type { Tournament, TournamentPlayer, Team, TeamMember, Match } from "@/types";
+import type {
+  Tournament,
+  TournamentPlayer,
+  Team,
+  TeamMember,
+  Match,
+  PublicTeamPlayer,
+  PublicPoint,
+  PublicMatchRosterPlayer,
+} from "@/types";
 
 export async function getTournaments(): Promise<Tournament[]> {
   const supabase = createClient();
@@ -273,11 +282,16 @@ export async function declareWinner(
   const supabase = createClient();
 
   // Record match
-  await supabase.from("matches").insert({
-    tournament_id: tournamentId,
-    winner_team_id: winnerTeamId,
-    played_at: new Date().toISOString(),
-  });
+  const { data: match, error: matchError } = await supabase
+    .from("matches")
+    .insert({
+      tournament_id: tournamentId,
+      winner_team_id: winnerTeamId,
+      played_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+  if (matchError) throw matchError;
 
   // Get team players and increment wins
   const { data: teamPlayers } = await supabase
@@ -286,10 +300,61 @@ export async function declareWinner(
     .eq("team_id", winnerTeamId);
 
   if (teamPlayers?.length) {
+    // Snapshot which players were on the winning team at this moment,
+    // since players can move between teams throughout the tournament.
+    await supabase.from("match_players").insert(
+      teamPlayers.map((tp) => ({
+        match_id: match.id,
+        tournament_id: tournamentId,
+        player_id: tp.player_id,
+        team_id: winnerTeamId,
+      }))
+    );
+
     for (const tp of teamPlayers) {
       await supabase.rpc("increment_wins", { player_id: tp.player_id });
     }
   }
+}
+
+export async function getPublicTournament(
+  token: string
+): Promise<Pick<Tournament, "id" | "name" | "date" | "players_per_team"> | null> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .rpc("public_get_tournament", { p_token: token })
+    .maybeSingle();
+  if (error) throw error;
+  return data as Pick<Tournament, "id" | "name" | "date" | "players_per_team"> | null;
+}
+
+export async function getPublicTeams(token: string): Promise<PublicTeamPlayer[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("public_get_teams", { p_token: token });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function getPublicPoints(token: string): Promise<PublicPoint[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("public_get_points", { p_token: token });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function getPublicMatchRoster(
+  token: string,
+  matchId: string,
+  teamId: string
+): Promise<PublicMatchRosterPlayer[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc("public_get_match_roster", {
+    p_token: token,
+    p_match_id: matchId,
+    p_team_id: teamId,
+  });
+  if (error) throw error;
+  return data ?? [];
 }
 
 export async function getWaitingPlayers(tournamentId: string): Promise<TournamentPlayer[]> {

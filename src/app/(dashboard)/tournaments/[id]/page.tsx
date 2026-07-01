@@ -30,7 +30,7 @@ import { AddSubModal } from "@/features/tournaments/AddSubModal";
 import { TeamCard } from "@/features/tournaments/TeamCard";
 import { toast } from "sonner";
 import { formatDate, formatCurrency } from "@/lib/utils";
-import { Users, Calendar, Shuffle, Plus, X, Shield, RotateCcw, Check } from "lucide-react";
+import { Users, Calendar, Shuffle, Plus, X, Shield, RotateCcw, Check, Share2 } from "lucide-react";
 import type { Team, TournamentPlayer } from "@/types";
 
 function PlayerRow({
@@ -309,6 +309,19 @@ export default function TournamentDetailPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 w-full sm:w-auto">
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={() => {
+                const url = `${window.location.origin}/t/${tournament.share_token}`;
+                navigator.clipboard.writeText(url);
+                toast.success("Link público copiado!");
+              }}
+              className="gap-2"
+            >
+              <Share2 className="h-4 w-4" />
+              <span className="hidden sm:inline">Compartilhar</span>
+            </Button>
             {teams.length > 0 && (
               <Button
                 variant="secondary"
