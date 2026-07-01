@@ -12,7 +12,6 @@ import {
   removeAllPlayersFromTournament,
   addAllPlayersToTournament,
   setPaid,
-  setAllPaid,
   drawTeams,
   resetTeams,
   declareWinner,
@@ -176,16 +175,6 @@ export default function TournamentDetailPage() {
     onError: (e: Error) => toast.error(`Erro ao salvar pagamento: ${e.message}`),
   });
 
-  const allPaidMutation = useMutation({
-    mutationFn: (paid: boolean) =>
-      setAllPaid(id, paid, paid ? tournament?.price ?? null : null),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tournament-players", id] });
-      toast.success("Pagamentos atualizados");
-    },
-    onError: (e: Error) => toast.error(`Erro ao salvar pagamentos: ${e.message}`),
-  });
-
   const addAllMutation = useMutation({
     mutationFn: () => addAllPlayersToTournament(id),
     onSuccess: () => {
@@ -272,8 +261,13 @@ export default function TournamentDetailPage() {
   });
 
   const addedPlayerIds = new Set(tournamentPlayers.map((tp) => tp.player_id));
+  const sortedTournamentPlayers = [...tournamentPlayers].sort((a, b) =>
+    (a.player?.name ?? "").localeCompare(b.player?.name ?? "")
+  );
   const paidPlayers = tournamentPlayers.filter((tp) => tp.paid);
-  const allPaid = tournamentPlayers.length > 0 && paidPlayers.length === tournamentPlayers.length;
+  const paidAmountByPlayerId = new Map(
+    paidPlayers.map((tp) => [tp.player_id, tp.amount_paid])
+  );
   const totalCollected = paidPlayers.reduce(
     (sum, tp) => sum + (tp.amount_paid ?? 0),
     0
@@ -363,29 +357,20 @@ export default function TournamentDetailPage() {
       {/* Players + Teams */}
       <div className="flex flex-col lg:grid lg:grid-cols-5 gap-6">
         {/* Players list */}
-        <div className="lg:col-span-2">
+        <div className={`${teams.length > 0 ? "order-2" : "order-1"} lg:order-0 lg:col-span-2`}>
           <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
             <h2 className="text-sm font-semibold text-[var(--foreground)]">
               Jogadores ({tournamentPlayers.length})
             </h2>
             <div className="flex items-center gap-1.5 flex-wrap justify-end">
               {tournamentPlayers.length > 0 && (
-                <>
-                  <button
-                    onClick={() => allPaidMutation.mutate(!allPaid)}
-                    disabled={allPaidMutation.isPending}
-                    className="rounded-full px-2.5 py-1 text-[10px] font-semibold border transition-all disabled:opacity-40 bg-[var(--background-tertiary)] border-[var(--border)] text-[var(--foreground-muted)] hover:border-emerald-500/40 hover:text-emerald-400"
-                  >
-                    {allPaid ? "Limpar pagos" : "Marcar todos pagos"}
-                  </button>
-                  <button
-                    onClick={() => clearAllMutation.mutate()}
-                    disabled={clearAllMutation.isPending}
-                    className="rounded-full px-2.5 py-1 text-[10px] font-semibold border transition-all disabled:opacity-40 bg-[var(--background-tertiary)] border-[var(--border)] text-[var(--foreground-muted)] hover:border-red-500/40 hover:text-red-400"
-                  >
-                    Limpar todos
-                  </button>
-                </>
+                <button
+                  onClick={() => clearAllMutation.mutate()}
+                  disabled={clearAllMutation.isPending}
+                  className="rounded-full px-2.5 py-1 text-[10px] font-semibold border transition-all disabled:opacity-40 bg-[var(--background-tertiary)] border-[var(--border)] text-[var(--foreground-muted)] hover:border-red-500/40 hover:text-red-400"
+                >
+                  Limpar todos
+                </button>
               )}
               <button
                 onClick={() => addAllMutation.mutate()}
@@ -415,7 +400,7 @@ export default function TournamentDetailPage() {
             </div>
           ) : (
             <div className="flex flex-col gap-1.5">
-              {tournamentPlayers.map((tp) => (
+              {sortedTournamentPlayers.map((tp) => (
                 <PlayerRow
                   key={tp.player_id}
                   tp={tp}
@@ -431,7 +416,7 @@ export default function TournamentDetailPage() {
         </div>
 
         {/* Teams */}
-        <div className="lg:col-span-3">
+        <div className={`${teams.length > 0 ? "order-1" : "order-2"} lg:order-0 lg:col-span-3`}>
           <h2 className="text-sm font-semibold text-[var(--foreground)] mb-3">
             Times {teams.length > 0 && `(${teams.length})`}
           </h2>
@@ -458,6 +443,7 @@ export default function TournamentDetailPage() {
                     key={team.id}
                     team={team}
                     allTeams={teams}
+                    paidAmountByPlayerId={paidAmountByPlayerId}
                     onDeclareWinner={() => setWinnerConfirm(team)}
                     onMovePlayer={(playerId, toTeamId) =>
                       movePlayerMutation.mutate({ playerId, fromTeamId: team.id, toTeamId })

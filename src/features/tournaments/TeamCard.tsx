@@ -1,14 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { Trophy, Pencil, Check, ArrowRight, X } from "lucide-react";
+import { Trophy, Pencil, Check, ArrowRight, X, BanknoteCheck, BanknoteX } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { formatCurrency } from "@/lib/utils";
 import type { Team } from "@/types";
 
 interface TeamCardProps {
   team: Team;
   allTeams: Team[];
+  paidAmountByPlayerId: Map<string, number | null>;
   onDeclareWinner: () => void;
   onMovePlayer: (playerId: string, toTeamId: string) => void;
   onRemoveFromTeam: (playerId: string) => void;
@@ -18,6 +20,7 @@ interface TeamCardProps {
 export function TeamCard({
   team,
   allTeams,
+  paidAmountByPlayerId,
   onDeclareWinner,
   onMovePlayer,
   onRemoveFromTeam,
@@ -72,6 +75,22 @@ export function TeamCard({
             <span className="text-sm text-[var(--foreground)] truncate flex-1">
               {player.name}
             </span>
+            {paidAmountByPlayerId.has(player.id) ? (
+              <span
+                title={
+                  paidAmountByPlayerId.get(player.id) != null
+                    ? `Pago · ${formatCurrency(paidAmountByPlayerId.get(player.id)!)}`
+                    : "Pago"
+                }
+                className="shrink-0 flex"
+              >
+                <BanknoteCheck className="h-3.5 w-3.5 text-emerald-400" />
+              </span>
+            ) : (
+              <span title="Pendente" className="shrink-0 flex">
+                <BanknoteX className="h-3.5 w-3.5 text-[var(--foreground-muted)]" />
+              </span>
+            )}
             {player.is_sub && !editing && (
               <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-400 border border-indigo-500/25 shrink-0">
                 Sub
